@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KUKA LBR Robot Control</title>
+  <style>
+    body { margin: 0; background-color: #b1fcf6;}
+    canvas { width: 100%; height: 100%; }
+    #controls { position: absolute; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.7); padding: 10px; }
+    input[type="range"] { width: 200px; }
+    #coordinates { margin-top: 10px; }
+    .control-group { margin-bottom: 10px; }
+    #transformation_matrix {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-gap: 5px;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    #transformation_matrix div {
+      padding-top: 10px;
+      margin: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 5px;
+    }
+    #end_effector_position {
+      margin-bottom: 20px;
+      margin-top: 20px;
+      font: 1em bold sans-serif;
+      border-radius: 5px;
+      color: #000000;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container3D"></div>
+  <div id="controls">
+    <div class="control-group">
+      <label for="link_1">Link 1:</label>
+      <input type="range" id="link_1" min="-170" max="170" value="0">
+      <input type="text" id="link_1_text" value="0" size="3" title="Link 1 Value">
+    </div>
+    <div class="control-group">
+      <label for="link_2">Link 2:</label>
+      <input type="range" id="link_2" min="-120" max="120" value="0">
+      <input type="text" id="link_2_text" value="0" size="3" title="Link 2 Value">
+    </div>
+    <div class="control-group">
+      <label for="link_3">Link 3:</label>
+      <input type="range" id="link_3" min="-170" max="170" value="0">
+      <input type="text" id="link_3_text" value="0" size="3" title="Link 3 Value">
+    </div>
+    <div class="control-group">
+      <label for="link_4">Link 4:</label>
+      <input type="range" id="link_4" min="-120" max="120" value="0">
+      <input type="text" id="link_4_text" value="0" size="3" title="Link 4 Value">
+    </div>
+    <div class="control-group">
+      <label for="link_5">Link 5:</label>
+      <input type="range" id="link_5" min="-170" max="170" value="0">
+      <input type="text" id="link_5_text" value="0" size="3" title="Link 5 Value">
+    </div>
+    <div class="control-group">
+      <label for="link_6">Link 6:</label>
+      <input type="range" id="link_6" min="-120" max="120" value="0">
+      <input type="text" id="link_6_text" value="0" size="3" title="Link 6 Value">
+    </div>
+    <div class="control-group">
+      <label for="link_7_basic">Link 7:</label>
+      <input type="range" id="link_7_basic" min="-175" max="175" value="0">
+      <input type="text" id="link_7_basic_text" value="0" size="3" title="Link 7 Value">
+    </div>
+    <div id="coordinates">
+      <div id="end_effector_position">End Effector Position: (X: 0.00, Y: 0.00, Z: 0.00)</div>
+    </div>
+    <div id="matrix_values">
+      <p>Transformation Matrix:</p>
+      <div id="transformation_matrix"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.skypack.dev/three@0.129.0/build/three.module.js";
+    import { OrbitControls } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/controls/OrbitControls.js";
+    import { GLTFLoader } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/loaders/GLTFLoader.js";
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(10, 10, 10);
+
+    const loader = new GLTFLoader();
+
+    const links = {};
+
+    loader.load(
+      "models/robot3.gltf",
+      function (gltf) {
+        const object = gltf.scene;
+        scene.add(object);
+
+        object.traverse(function(child) {
+          if (child.isMesh && child.name.startsWith("link_")) {
+            links[child.name] = child;
+          }
+        });
+
+        object.scale.set(10, 10, 10);  
+        object.position.set(0, -10, 0);
+      },
+      function (xhr) {
+        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+      },
+      function (error) {
+        console.error(error);
+      }
+    );
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    document.getElementById("container3D").appendChild(renderer.domElement);
+
+    // Add lights to the scene
+    const topLight = new THREE.DirectionalLight(0xffffff, 1);
+    topLight.position.set(500, 500, 500);
+    topLight.castShadow = true;
+    scene.add(topLight);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+    scene.add(ambientLight);
+
+    // Additional lights
+    const light1 = new THREE.DirectionalLight(0xffffff, 0.5);
+    light1.position.set(-500, 500, 500);
+    scene.add(light1);
+
+    const light2 = new THREE.DirectionalLight(0xffffff, 0.5);
+    light2.position.set(500, -500, 500);
+    scene.add(light2);
+
+    const light3 = new THREE.DirectionalLight(0xffffff, 0.5);
+    light3.position.set(500, 500, -500);
+    scene.add(light3);
+
+    const light4 = new THREE.DirectionalLight(0xffffff, 0.5);
+    light4.position.set(-500, -500, -500);
+    scene.add(light4);
+
+    const pointLight1 = new THREE.PointLight(0xffffff, 1, 1000);
+    pointLight1.position.set(0, 500, 0);
+    scene.add(pointLight1);
+
+    const pointLight2 = new THREE.PointLight(0xffffff, 1, 1000);
+    pointLight2.position.set(0, -500, 0);
+    scene.add(pointLight2);
+
+    const pointLight3 = new THREE.PointLight(0xffffff, 1, 1000);
+    pointLight3.position.set(500, 0, 500);
+    scene.add(pointLight3);
+
+    const pointLight4 = new THREE.PointLight(0xffffff, 1, 1000);
+    pointLight4.position.set(-500, 0, -500);
+    scene.add(pointLight4);
+
+    const wallMaterial1 = new THREE.MeshBasicMaterial({ color: 0x145da0 });  // Green wall
+    const wallMaterial2 = new THREE.MeshBasicMaterial({ color: 0x14A069 });  // Blue wall
+    const floorMaterial = new THREE.MeshBasicMaterial({ color: 0xff5757 });  // Red floor
+
+    const wallGeometry = new THREE.PlaneGeometry(20, 20);
+    const floorGeometry = new THREE.PlaneGeometry(20, 20);
+
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.position.set(0, -10, 0);
+    floor.rotation.x = -Math.PI / 2;
+
+    const rightWall = new THREE.Mesh(wallGeometry, wallMaterial1);
+    rightWall.position.set(10, 0, 0);
+    rightWall.rotation.y = -Math.PI / 2;
+
+    const backWall = new THREE.Mesh(wallGeometry, wallMaterial2);
+    backWall.position.set(0, 0, -10);
+
+    scene.add(floor);
+    scene.add(rightWall);
+    scene.add(backWall);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+
+    const loaderFont = new THREE.FontLoader();
+    loaderFont.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+      const textMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+      // X-axis label
+      const xTextGeometry = new THREE.TextGeometry('X', {
+        font: font,
+        size: 1,
+        height: 0.1
+      });
+      const xTextMesh = new THREE.Mesh(xTextGeometry, textMaterial);
+      xTextMesh.position.set(11, 0, 0);
+      scene.add(xTextMesh);
+
+      // Y-axis label
+      const yTextGeometry = new THREE.TextGeometry('Y', {
+        font: font,
+        size: 1,
+        height: 0.1
+      });
+      const yTextMesh = new THREE.Mesh(yTextGeometry, textMaterial);
+      yTextMesh.position.set(0, 11, 0);
+      scene.add(yTextMesh);
+
+      // Z-axis label
+      const zTextGeometry = new THREE.TextGeometry('Z', {
+        font: font,
+        size: 1,
+        height: 0.1
+      });
+      const zTextMesh = new THREE.Mesh(zTextGeometry, textMaterial);
+      zTextMesh.position.set(0, 0, -11);
+      scene.add(zTextMesh);
+    });
+
+    controls.minDistance = 10;
+    controls.maxDistance = 50;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.rotateSpeed = 0.2;
+    controls.maxPolarAngle = Math.PI / 3; 
+    controls.minAzimuthAngle = -Math.PI / 5; 
+    controls.maxAzimuthAngle = Math.PI / 10;  
+
+    function multiplyMatrices(a, b) {
+      const result = [];
+      for (let i = 0; i < 4; i++) {
+        result[i] = [];
+        for (let j = 0; j < 4; j++) {
+          result[i][j] = 0;
+          for (let k = 0; k < 4; k++) {
+            result[i][j] += a[i][k] * b[k][j];
+          }
+        }
+      }
+      return result;
+    }
+
+    // Function to format a matrix for display
+    function formatMatrix(matrix) {
+      return matrix.flat().map(val => `<div>${val.toFixed(2)}</div>`).join('');
+    }
+
+    function updateTransformationMatrix() {
+      const angles = [
+        parseFloat(document.getElementById("link_1").value),
+        parseFloat(document.getElementById("link_2").value),
+        parseFloat(document.getElementById("link_3").value),
+        parseFloat(document.getElementById("link_4").value),
+        parseFloat(document.getElementById("link_5").value),
+        parseFloat(document.getElementById("link_6").value),
+        parseFloat(document.getElementById("link_7_basic").value),
+      ];
+
+      const matrices = angles.map((theta, index) => {
+        const rad = THREE.MathUtils.degToRad(theta);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const d = 1; 
+
+        switch (index) {
+          case 0:
+            return [
+              [cos, 0, -sin, 0],
+              [sin, 0, cos, 0],
+              [0, -1, 0, 34.0],
+              [0, 0, 0, 1]
+            ];
+          case 1:
+            return [
+              [cos, 0, sin, 0],
+              [sin, 0, -cos, 0],
+              [0, 1, 0, 0],
+              [0, 0, 0, 1]
+            ];
+          case 2: 
+            return [
+              [cos, 0, sin, 0],
+              [sin, 0, -cos, 0],
+              [0, 1, 0, 40.0],
+              [0, 0, 0, 1]
+            ];
+          case 3:
+            return [
+              [cos, 0, -sin, 0],
+              [sin, 0, cos, 0],
+              [0, -1, 0, 0],
+              [0, 0, 0, 1]
+            ];
+          case 4:
+            return [
+              [cos, 0, -sin, 0],
+              [sin, 0, cos, 0],
+              [0, -1, 0, 40.0],
+              [0, 0, 0, 1]
+            ];
+          case 5:
+            return [
+              [cos, 0, sin, 0],
+              [sin, 0, -cos, 0],
+              [0, 1, 0, 0],
+              [0, 0, 0, 1]
+            ];
+          case 6: 
+            return [
+              [cos, -sin, 0, 0],
+              [sin, cos, 0, 0],
+              [0, 0, 0, 12.6],
+              [0, 0, 0, 1]
+            ];
+        }
+      });
+
+      let combinedMatrix = matrices[0];
+        for (let i = 1; i < matrices.length; i++) {
+          combinedMatrix = multiplyMatrices(combinedMatrix, matrices[i]);
+        }
+
+        const matrixElement = document.getElementById("transformation_matrix");
+        matrixElement.innerHTML = formatMatrix(combinedMatrix);
+      }
+
+
+      function updateEndEffectorPosition() {
+        if (links['link_7_basic']) {
+          const position = new THREE.Vector3();
+          links['link_7_basic'].getWorldPosition(position);
+          const endEffectorPosition = document.getElementById("end_effector_position");
+          endEffectorPosition.innerHTML = `End Effector Position: (X: ${position.x.toFixed(2)}, Y: ${position.y.toFixed(2)}, Z: ${position.z.toFixed(2)})`;
+        }
+      }
+
+      function updateLinkRotation() {
+        const link_1_value = parseFloat(document.getElementById("link_1").value);
+        document.getElementById("link_1_text").value = link_1_value;
+        const link_2_value = parseFloat(document.getElementById("link_2").value);
+        document.getElementById("link_2_text").value = link_2_value;
+        const link_3_value = parseFloat(document.getElementById("link_3").value);
+        document.getElementById("link_3_text").value = link_3_value;
+        const link_4_value = parseFloat(document.getElementById("link_4").value);
+        document.getElementById("link_4_text").value = link_4_value;
+        const link_5_value = parseFloat(document.getElementById("link_5").value);
+        document.getElementById("link_5_text").value = link_5_value;
+        const link_6_value = parseFloat(document.getElementById("link_6").value);
+        document.getElementById("link_6_text").value = link_6_value;
+        const link_7_value = parseFloat(document.getElementById("link_7_basic").value);
+        document.getElementById("link_7_basic_text").value = link_7_value;
+
+        if (links['link_1']) links['link_1'].rotation.y = THREE.MathUtils.degToRad(link_1_value);
+        if (links['link_2']) links['link_2'].rotation.y = THREE.MathUtils.degToRad(link_2_value);
+        if (links['link_3']) links['link_3'].rotation.y = THREE.MathUtils.degToRad(link_3_value);
+        if (links['link_4']) links['link_4'].rotation.y = THREE.MathUtils.degToRad(link_4_value);
+        if (links['link_5']) links['link_5'].rotation.y = THREE.MathUtils.degToRad(link_5_value);
+        if (links['link_6']) links['link_6'].rotation.y = THREE.MathUtils.degToRad(link_6_value);
+        if (links['link_7_basic']) links['link_7_basic'].rotation.y = THREE.MathUtils.degToRad(link_7_value);
+
+        updateTransformationMatrix();
+        updateEndEffectorPosition();
+      }
+
+      const linkNames = ["link_1", "link_2", "link_3", "link_4", "link_5", "link_6", "link_7_basic"];
+      for (const linkName of linkNames) {
+        const slider = document.getElementById(linkName);
+        slider.addEventListener('input', updateLinkRotation);
+      }
+
+      //Slider value
+      for (const linkName of linkNames) {
+        const textInput = document.getElementById(`${linkName}_text`);
+        const slider = document.getElementById(linkName);
+        textInput.addEventListener('input', () => {
+          const value = parseFloat(textInput.value);
+          if (!isNaN(value)) {
+            slider.value = value;
+            updateLinkRotation();
+          }
+        });
+      }
+
+      // Add a listener to the window for resizing
+      window.addEventListener("resize", function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // Render the scene
+      function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+        controls.update();
+      }
+
+      animate();
+    </script>
+    </body>
+    </html>
